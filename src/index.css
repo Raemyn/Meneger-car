@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@import "@mantine/core/styles.css";
+@import "@mantine/dates/styles.css";
+@import "@mantine/notifications/styles.css";
+
+:root {
+  --mantine-font-family: 'Inter', sans-serif;
+}
+
+@media print {
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide everything by default */
+  body > * {
+    display: none !important;
+  }
+
+  /* Show only the print area */
+  .printable-content,
+  .printable-content * {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .printable-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px;
+    display: block !important;
+  }
+
+  /* Ensure tables print correctly */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  
+  /* Hide print buttons while printing */
+  button, .no-print {
+    display: none !important;
+  }
+
+  .no-print-border {
+    border: none !important;
+  }
+
+  .no-print-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 20px !important;
+  }
+
+  .no-print-grid > * {
+    flex: 1;
+  }
+}
