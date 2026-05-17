@@ -200,7 +200,7 @@ export const api = {
 
   updateClient: async (client: Client) => {
     try {
-      const response = await axiosInstance.put(`/clients/${client.id}`, {
+      const response = await axiosInstance.post(`/clients/${client.id}`, {
         fullName: client.fullName,
         phoneNumber: client.phoneNumber,
         birthDate: client.birthDate,
