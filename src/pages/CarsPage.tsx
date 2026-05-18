@@ -415,7 +415,7 @@ export default function CarsPage() {
                           {repair.isArchived ? "Архив" : "В работе"}
                         </Badge>
                         <Text fw={700} size="sm" c="blue">
-                          №{repair.id.split("-").pop()}
+                          №{repair.id}
                         </Text>
                         <Text fw={500} size="sm">
                           {dayjs(repair.dateReceived).format("DD.MM.YYYY")}
