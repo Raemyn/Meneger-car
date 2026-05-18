@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from 'react';
 import {
   Title,
   Table,
@@ -14,97 +14,88 @@ import {
   List,
   ActionIcon,
   Card,
-} from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import {
-  IconPlus,
-  IconEdit,
-  IconHistory,
-  IconTool,
-} from "@tabler/icons-react";
-import { api } from "../services/api.ts";
-import { Client, Repair, FAULT_STATUS_LABELS } from "../types.ts";
-import dayjs from "dayjs";
+  Divider,
+} from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconPlus, IconEdit, IconHistory, IconTool } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 
-type CarItem = {
-  id: string | number;
-  ownerId: string | number;
-  brand?: string;
-  make?: string;
-  model?: string;
-  licensePlate?: string;
-  color?: string;
-  year?: number;
-  client?: Client | null;
-  ownerName?: string;
-};
-
-type EditingCar = Partial<CarItem>;
+import { api } from '../services/api.ts';
+import { Car, Client, Repair, Employee } from '../types.ts';
 
 export default function CarsPage() {
-  const [cars, setCars] = useState<CarItem[]>([]);
+  const [cars, setCars] = useState<Car[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [repairs, setRepairs] = useState<Repair[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+
   const [opened, { open, close }] = useDisclosure(false);
   const [historyOpened, { open: openHistory, close: closeHistory }] = useDisclosure(false);
   const [clientOpened, { open: openClient, close: closeClient }] = useDisclosure(false);
-  const [editingCar, setEditingCar] = useState<EditingCar | null>(null);
-  const [selectedCarForHistory, setSelectedCarForHistory] = useState<CarItem | null>(null);
+
+  const [editingCar, setEditingCar] = useState<Partial<Car> | null>(null);
+  const [selectedCarForHistory, setSelectedCarForHistory] = useState<Car | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const carsData = await api.getCars();
-      const clientsData = await api.getClients();
-      const repairsData = await api.getRepairs();
+      const [carsData, clientsData, repairsData, employeesData] = await Promise.all([
+        api.getCars(),
+        api.getClients(),
+        api.getRepairs(),
+        api.getEmployees(),
+      ]);
 
-      setCars(carsData as CarItem[]);
+      setCars(carsData);
       setClients(clientsData);
       setRepairs(repairsData);
+      setEmployees(employeesData);
     };
 
     fetchData();
   }, []);
 
-  const getCarBrand = (car: CarItem) => car.brand ?? car.make ?? "";
-  const getCarOwnerName = (car: CarItem) => car.client?.fullName ?? car.ownerName ?? "Неизвестно";
+  const getCarBrand = (car: Car) => car.brand;
+  const getCarOwnerName = (car: Car) => car.client?.fullName ?? car.ownerName ?? 'Неизвестно';
 
   const handleSave = async () => {
-    const brand = (editingCar?.brand ?? editingCar?.make ?? "").trim();
-    const licensePlate = (editingCar?.licensePlate ?? "").trim();
+    const brand = (editingCar?.brand ?? '').trim();
+    const model = (editingCar?.model ?? '').trim();
+    const licensePlate = (editingCar?.licensePlate ?? '').trim();
     const ownerId = editingCar?.ownerId;
 
-    if (brand && licensePlate && ownerId) {
-      const owner = clients.find((c) => String(c.id) === String(ownerId));
-
-      const newCar: CarItem = {
-        id: editingCar?.id || Math.random().toString(36).substring(2, 9),
-        ownerId,
-        brand,
-        make: brand,
-        model: editingCar?.model || "",
-        year: editingCar?.year || dayjs().year(),
-        color: editingCar?.color || "",
-        licensePlate,
-        client: owner ?? null,
-        ownerName: owner?.fullName || "Неизвестно",
-      };
-
-      await api.saveCar(newCar as any);
-      setCars((await api.getCars()) as CarItem[]);
-      close();
+    if (!brand || !model || !licensePlate || ownerId === undefined || ownerId === null) {
+      return;
     }
+
+    const owner = clients.find((c) => c.id === Number(ownerId));
+
+    const payload: Car = {
+      id: editingCar?.id ? Number(editingCar.id) : Date.now(),
+      ownerId: Number(ownerId),
+      brand,
+      model,
+      year: editingCar?.year ?? dayjs().year(),
+      color: editingCar?.color ?? null,
+      licensePlate,
+      ownerName: owner?.fullName ?? 'Неизвестно',
+      client: owner ?? null,
+    };
+
+    if (editingCar?.id) {
+      await api.updateCar(payload);
+    } else {
+      await api.saveCar(payload);
+    }
+
+    const freshCars = await api.getCars();
+    setCars(freshCars);
+    close();
+    setEditingCar(null);
   };
 
-  const getCarFaults = (carId: string | number) => {
-    const carRepairs = repairs.filter((r) => String(r.carId) === String(carId));
-    return carRepairs.flatMap((r) =>
-      r.faults.map((f) => ({
-        description: f.description,
-        date: r.dateReceived,
-        isResolved: r.isArchived,
-      }))
-    );
+  const getCarRepairs = (carId: number) => {
+    return repairs.filter((repair) => Number(repair.carId) === Number(carId));
   };
 
   return (
@@ -130,49 +121,47 @@ export default function CarsPage() {
             <Table.Th>Цвет</Table.Th>
             <Table.Th>Год выпуска</Table.Th>
             <Table.Th>Владелец</Table.Th>
-            <Table.Th>Неисправности</Table.Th>
+            <Table.Th>Ремонты</Table.Th>
             <Table.Th w={100}>Действия</Table.Th>
           </Table.Tr>
         </Table.Thead>
 
         <Table.Tbody>
           {cars.map((car) => {
-            const faults = getCarFaults(car.id);
+            const carRepairs = getCarRepairs(car.id);
             const ownerName = getCarOwnerName(car);
             const brand = getCarBrand(car);
 
             return (
-              <Table.Tr key={String(car.id)}>
+              <Table.Tr key={car.id}>
                 <Table.Td>
                   <Badge
                     size="lg"
                     variant="outline"
                     color="dark"
                     radius="sm"
-                    styles={{ root: { border: "2px solid" } }}
+                    styles={{ root: { border: '2px solid' } }}
                   >
-                    {car.licensePlate || "-"}
+                    {car.licensePlate || '-'}
                   </Badge>
                 </Table.Td>
 
                 <Table.Td>
-                  {brand} {car.model || ""}
+                  {brand} {car.model || ''}
                 </Table.Td>
 
-                <Table.Td>{car.color || "-"}</Table.Td>
+                <Table.Td>{car.color || '-'}</Table.Td>
 
-                <Table.Td>{car.year || "-"}</Table.Td>
+                <Table.Td>{car.year || '-'}</Table.Td>
 
                 <Table.Td>
                   <Text
                     c="blue"
                     fw={500}
-                    style={{ cursor: "pointer", textDecoration: "underline" }}
+                    style={{ cursor: 'pointer', textDecoration: 'underline' }}
                     onClick={() => {
                       const client =
-                        clients.find((c) => String(c.id) === String(car.ownerId)) ??
-                        car.client ??
-                        null;
+                        clients.find((c) => c.id === Number(car.ownerId)) ?? car.client ?? null;
 
                       if (client) {
                         setSelectedClient(client);
@@ -185,7 +174,7 @@ export default function CarsPage() {
                 </Table.Td>
 
                 <Table.Td>
-                  {faults.length > 0 ? (
+                  {carRepairs.length > 0 ? (
                     <Button
                       variant="light"
                       size="xs"
@@ -196,7 +185,7 @@ export default function CarsPage() {
                         openHistory();
                       }}
                     >
-                      История ({faults.length})
+                      История ({carRepairs.length})
                     </Button>
                   ) : (
                     <Text size="xs" c="dimmed">
@@ -228,18 +217,32 @@ export default function CarsPage() {
         </Table.Tbody>
       </Table>
 
-      <Modal opened={opened} onClose={close} title="Карточка автомобиля">
+      <Modal
+        opened={opened}
+        onClose={() => {
+          close();
+          setEditingCar(null);
+        }}
+        title="Карточка автомобиля"
+        centered
+      >
         <Stack>
           <Select
             label="Владелец"
             placeholder="Выберите из базы"
             required
+            searchable
             data={clients.map((c) => ({
               value: String(c.id),
               label: c.fullName,
             }))}
             value={editingCar?.ownerId ? String(editingCar.ownerId) : null}
-            onChange={(val) => setEditingCar({ ...editingCar, ownerId: val || "" })}
+            onChange={(val) =>
+              setEditingCar((prev) => ({
+                ...(prev ?? {}),
+                ownerId: val ? Number(val) : undefined,
+              }))
+            }
           />
 
           <Group grow>
@@ -247,16 +250,25 @@ export default function CarsPage() {
               label="Марка"
               placeholder="Toyota"
               required
-              value={editingCar?.brand ?? editingCar?.make ?? ""}
+              value={editingCar?.brand ?? ''}
               onChange={(e) =>
-                setEditingCar({ ...editingCar, brand: e.target.value, make: e.target.value })
+                setEditingCar((prev) => ({
+                  ...(prev ?? {}),
+                  brand: e.currentTarget.value,
+                }))
               }
             />
             <TextInput
               label="Модель"
               placeholder="Camry"
-              value={editingCar?.model || ""}
-              onChange={(e) => setEditingCar({ ...editingCar, model: e.target.value })}
+              required
+              value={editingCar?.model ?? ''}
+              onChange={(e) =>
+                setEditingCar((prev) => ({
+                  ...(prev ?? {}),
+                  model: e.currentTarget.value,
+                }))
+              }
             />
           </Group>
 
@@ -265,25 +277,35 @@ export default function CarsPage() {
               label="Госномер"
               placeholder="A001AA77"
               required
-              value={editingCar?.licensePlate || ""}
-              onChange={(e) => setEditingCar({ ...editingCar, licensePlate: e.target.value })}
+              value={editingCar?.licensePlate ?? ''}
+              onChange={(e) =>
+                setEditingCar((prev) => ({
+                  ...(prev ?? {}),
+                  licensePlate: e.currentTarget.value,
+                }))
+              }
             />
             <TextInput
               label="Цвет"
               placeholder="Белый"
-              value={editingCar?.color || ""}
-              onChange={(e) => setEditingCar({ ...editingCar, color: e.target.value })}
+              value={editingCar?.color ?? ''}
+              onChange={(e) =>
+                setEditingCar((prev) => ({
+                  ...(prev ?? {}),
+                  color: e.currentTarget.value,
+                }))
+              }
             />
           </Group>
 
           <NumberInput
             label="Год выпуска"
-            value={editingCar?.year || 2023}
+            value={editingCar?.year ?? dayjs().year()}
             onChange={(val) =>
-              setEditingCar({
-                ...editingCar,
-                year: typeof val === "number" ? val : Number(val || dayjs().year()),
-              })
+              setEditingCar((prev) => ({
+                ...(prev ?? {}),
+                year: typeof val === 'number' ? val : Number(val) || dayjs().year(),
+              }))
             }
           />
 
@@ -295,7 +317,10 @@ export default function CarsPage() {
 
       <Modal
         opened={clientOpened}
-        onClose={closeClient}
+        onClose={() => {
+          closeClient();
+          setSelectedClient(null);
+        }}
         title="Детальная информация о клиенте"
         size="lg"
         centered
@@ -306,7 +331,7 @@ export default function CarsPage() {
               <Stack gap={0}>
                 <Title order={3}>{selectedClient.fullName}</Title>
                 <Text size="sm" c="dimmed">
-                  {dayjs(selectedClient.birthDate).format("DD.MM.YYYY")} г.р.
+                  {dayjs(selectedClient.birthDate).format('DD.MM.YYYY')} г.р.
                 </Text>
               </Stack>
             </Group>
@@ -329,61 +354,14 @@ export default function CarsPage() {
               </Stack>
             </Card>
 
-            <Stack gap="xs">
-              <Text fw={700} size="sm" c="green">
-                История обращений
-              </Text>
-
-              <Table variant="vertical" withTableBorder layout="fixed">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th w={120}>Дата</Table.Th>
-                    <Table.Th>Автомобиль</Table.Th>
-                    <Table.Th>Статус</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-
-                <Table.Tbody>
-                  {repairs
-                    .filter((r) => String(r.clientId) === String(selectedClient.id))
-                    .sort((a, b) => dayjs(b.dateReceived).unix() - dayjs(a.dateReceived).unix())
-                    .map((r) => {
-                      const car = cars.find((c) => String(c.id) === String(r.carId));
-                      return (
-                        <Table.Tr key={r.id}>
-                          <Table.Td>{dayjs(r.dateReceived).format("DD.MM.YYYY")}</Table.Td>
-                          <Table.Td>
-                            <Text size="xs" fw={500}>
-                              {car ? `${getCarBrand(car)} ${car.model || ""}` : "-"}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              {car?.licensePlate || "-"}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            <Badge size="xs" color={r.isArchived ? "green" : "blue"}>
-                              {r.isArchived ? "Завершен" : "В работе"}
-                            </Badge>
-                          </Table.Td>
-                        </Table.Tr>
-                      );
-                    })}
-
-                  {repairs.filter((r) => String(r.clientId) === String(selectedClient.id)).length ===
-                    0 && (
-                    <Table.Tr>
-                      <Table.Td colSpan={3}>
-                        <Text ta="center" size="xs" c="dimmed" py="xs">
-                          Нет истории обращений
-                        </Text>
-                      </Table.Td>
-                    </Table.Tr>
-                  )}
-                </Table.Tbody>
-              </Table>
-            </Stack>
-
-            <Button fullWidth onClick={closeClient} mt="sm">
+            <Button
+              fullWidth
+              onClick={() => {
+                closeClient();
+                setSelectedClient(null);
+              }}
+              mt="sm"
+            >
               Закрыть
             </Button>
           </Stack>
@@ -392,60 +370,58 @@ export default function CarsPage() {
 
       <Modal
         opened={historyOpened}
-        onClose={closeHistory}
-        title={`История ремонтов: ${selectedCarForHistory ? `${getCarBrand(selectedCarForHistory)} ${selectedCarForHistory.model || ""} (${selectedCarForHistory.licensePlate || "-"})` : ""}`}
+        onClose={() => {
+          closeHistory();
+          setSelectedCarForHistory(null);
+        }}
+        title={`История ремонтов: ${selectedCarForHistory
+            ? `${getCarBrand(selectedCarForHistory)} ${selectedCarForHistory.model || ''} (${selectedCarForHistory.licensePlate || '-'
+            })`
+            : ''
+          }`}
         size="xl"
       >
         <Stack gap="md" py="xs">
           {selectedCarForHistory &&
-            (repairs.filter((r) => String(r.carId) === String(selectedCarForHistory.id)).length >
-            0 ? (
+            (repairs.filter((r) => Number(r.carId) === Number(selectedCarForHistory.id)).length >
+              0 ? (
               repairs
-                .filter((r) => String(r.carId) === String(selectedCarForHistory.id))
-                .sort((a, b) => dayjs(b.dateReceived).unix() - dayjs(a.dateReceived).unix())
+                .filter((r) => Number(r.carId) === Number(selectedCarForHistory.id))
+                .sort((a, b) => dayjs(b.expectedReturnDate).unix() - dayjs(a.expectedReturnDate).unix())
                 .map((repair) => (
                   <Card key={repair.id} withBorder p="md" radius="sm" shadow="xs">
                     <Group justify="space-between" mb="xs">
                       <Group gap="xs">
-                        <Badge
-                          size="sm"
-                          color={repair.isArchived ? "green" : "blue"}
-                          variant={repair.isArchived ? "light" : "filled"}
-                        >
-                          {repair.isArchived ? "Архив" : "В работе"}
+                        <Badge size="sm" color={repair.isArchived ? 'green' : 'blue'} variant="light">
+                          {repair.isArchived ? 'Архив' : 'В работе'}
                         </Badge>
                         <Text fw={700} size="sm" c="blue">
                           №{repair.id}
                         </Text>
                         <Text fw={500} size="sm">
-                          {dayjs(repair.dateReceived).format("DD.MM.YYYY")}
+                          {dayjs(repair.expectedReturnDate).format('DD.MM.YYYY')}
                         </Text>
                       </Group>
 
-                      <Group gap="xs">
-                        {repair.dateFinished && (
-                          <Text size="xs" c="dimmed">
-                            Завершен: {dayjs(repair.dateFinished).format("DD.MM.YYYY")}
-                          </Text>
-                        )}
-                      </Group>
+                      <Text size="xs" c="dimmed">
+                        Мастер:{' '}
+                        {repair.masterId
+                          ? employees.find((e) => e.id === repair.masterId)?.fullName || 'Не найден'
+                          : 'Не назначен'}
+                      </Text>
                     </Group>
 
+                    <Divider my="xs" />
+
                     <List size="sm" spacing="xs" icon={<IconTool size={14} color="gray" />} mt="sm">
-                      {repair.faults.map((f) => (
-                        <List.Item key={f.id}>
-                          <Group justify="space-between" wrap="nowrap" gap="xl">
-                            <Text size="sm" fw={500}>
-                              {f.description}
-                            </Text>
-                            <Badge
-                              variant="dot"
-                              size="xs"
-                              color={f.status === "resolved" ? "green" : "orange"}
-                            >
-                              {FAULT_STATUS_LABELS[f.status]}
-                            </Badge>
-                          </Group>
+                      {repair.faults.map((fault, index) => (
+                        <List.Item key={index}>
+                          <Text size="sm" fw={500}>
+                            {fault.category}
+                          </Text>
+                          <Text size="sm" c="dimmed">
+                            {fault.description}
+                          </Text>
                         </List.Item>
                       ))}
                     </List>
